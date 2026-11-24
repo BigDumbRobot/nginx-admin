@@ -458,6 +458,12 @@ final class ServerMonitor: ObservableObject {
             await start()
             return
         }
+        do {
+            try Stack.installIfNeeded(at: prefs.stackPath)   // apply server files from an app update
+        } catch {
+            phase = .failed(error.localizedDescription)
+            return
+        }
         let out = await Docker.compose(prefs.stackPath, ["up", "-d", "--force-recreate"])
         guard out.status == 0 else {
             phase = .failed(Self.explain(out))

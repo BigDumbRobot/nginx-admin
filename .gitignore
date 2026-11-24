@@ -8,3 +8,7 @@ NginxAdmin/.swiftpm/
 *.xcodeproj/
 xcuserdata/
 __pycache__/
+
+# Written by the app to track which version of the server files is installed.
+.nginx-admin-version
+*.backup-*

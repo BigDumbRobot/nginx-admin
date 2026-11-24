@@ -19,26 +19,48 @@ performer is a Media Source, so switching between them is just a scene change.
   unknown key tries to connect, and if the server goes down.
 - **Browser dashboard** at `http://localhost:8090` for a second screen.
 
-Requires macOS 14.2 or later on Apple silicon, and [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+Requires macOS 14.2 or later (Apple silicon or Intel) and [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 
-## Install
+## Download
+
+**[Download the latest version](https://github.com/BigDumbRobot/nginx-admin/releases/latest)**:
+get the `.dmg` file under *Assets*.
 
 1. Install and open **Docker Desktop** once (accept its prompts). In its settings, turn on
    **Start Docker Desktop when you sign in**.
-2. Build and install the app (needs Xcode command line tools: `xcode-select --install`):
-   ```sh
-   git clone https://github.com/BigDumbRobot/nginx-admin.git ~/rtmp-server
-   ~/rtmp-server/NginxAdmin/build.sh --install
-   ```
-3. Look for the video-camera icon in the menu bar and press **Start Server**.
-4. In **Settings**, enter the address performers stream to (e.g. `rtmp://your.address:1935/live`)
+2. Open the `.dmg` and drag **Nginx Admin** into **Applications**.
+3. Open **Nginx Admin** from Applications. The first time, macOS blocks it, because the app isn't
+   registered with Apple. To allow it once:
+   - **macOS 15 or later**: click **Done** on the warning, then open **System Settings →
+     Privacy & Security**, scroll down to *"Nginx Admin" was blocked*, click **Open Anyway** and
+     enter your password.
+   - **macOS 14**: right-click (or Control-click) the app in Applications, choose **Open**, then
+     **Open** again.
+4. Look for the video-camera icon in the menu bar and press **Start Server**. The first start
+   downloads the server software (about 340 MB), so give it a few minutes.
+5. In **Settings**, enter the address performers stream to (e.g. `rtmp://your.address:1935/live`)
    and turn on **Open Nginx Admin at login**.
 
 > Can't see the icon? A full menu bar hides icons behind the camera notch. Hold **⌘** and drag
 > other icons out of the menu bar to make room.
 
-The app expects the server files in `~/rtmp-server` (changeable in Settings). If the folder is
-missing, it creates one from the copy inside the app.
+The server files live in `~/rtmp-server` (changeable in Settings), and the app sets that folder up
+for you. Your stream keys and settings are kept in its `data` folder.
+
+**Updating**: download the new `.dmg`, quit Nginx Admin, and drag the new version into
+Applications. Your keys and settings are kept. The new server files are applied the next time you
+press Start or Fresh Restart. A server file you edited by hand is saved next to the new one as
+`<name>.backup-<version>`.
+
+### Building it yourself
+
+Needs Xcode command line tools (`xcode-select --install`):
+
+```sh
+git clone https://github.com/BigDumbRobot/nginx-admin.git ~/rtmp-server
+~/rtmp-server/NginxAdmin/build.sh --install     # build and install to /Applications
+~/rtmp-server/NginxAdmin/build.sh --release     # make the .dmg and .zip in NginxAdmin/dist/
+```
 
 ## Using it
 

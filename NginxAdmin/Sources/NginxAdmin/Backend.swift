@@ -94,22 +94,47 @@ enum Stack {
         FileManager.default.fileExists(atPath: folder + "/compose.yaml")
     }
 
-    /// Creates the server folder from the copy inside the app, if it doesn't exist yet.
+    static let versionFile = ".nginx-admin-version"
+    static var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+    }
+
+    /// Creates the server folder from the copy inside the app, or brings it up to date after the
+    /// app was updated. Stream keys and settings (data/) are never touched. A server file that
+    /// differs from the new one (e.g. a hand-edited nginx.conf) is kept as "<name>.backup-<version>".
     static func installIfNeeded(at folder: String) throws {
-        guard !isInstalled(at: folder) else { return }
         guard let bundled, FileManager.default.fileExists(atPath: bundled.path) else {
+            // Running outside the .app (swift run): use whatever is in the folder.
+            if isInstalled(at: folder) { return }
             throw NSError(domain: "NginxAdmin", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "No server files found at \(folder)."])
         }
         let fm = FileManager.default
+        let stamp = folder + "/" + versionFile
+        let installed = (try? String(contentsOfFile: stamp, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard installed != appVersion || !isInstalled(at: folder) else { return }
+
         try fm.createDirectory(atPath: folder, withIntermediateDirectories: true)
-        for item in try fm.contentsOfDirectory(atPath: bundled.path) {
-            let dest = folder + "/" + item
-            if !fm.fileExists(atPath: dest) {
-                try fm.copyItem(atPath: bundled.appendingPathComponent(item).path, toPath: dest)
+        let previous = installed ?? "old"
+        guard let files = fm.enumerator(atPath: bundled.path) else { return }
+        for case let relative as String in files {
+            let source = bundled.appendingPathComponent(relative).path
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: source, isDirectory: &isDir), !isDir.boolValue else { continue }
+            let dest = folder + "/" + relative
+            try fm.createDirectory(atPath: (dest as NSString).deletingLastPathComponent,
+                                   withIntermediateDirectories: true)
+            if fm.fileExists(atPath: dest) {
+                if fm.contentsEqual(atPath: source, andPath: dest) { continue }
+                let backup = dest + ".backup-" + previous
+                try? fm.removeItem(atPath: backup)
+                try fm.moveItem(atPath: dest, toPath: backup)
             }
+            try fm.copyItem(atPath: source, toPath: dest)
         }
         try fm.createDirectory(atPath: folder + "/data", withIntermediateDirectories: true)
+        try appVersion.write(toFile: stamp, atomically: true, encoding: .utf8)
     }
 }
 
