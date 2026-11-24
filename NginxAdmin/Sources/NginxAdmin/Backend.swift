@@ -18,6 +18,7 @@ enum Shell {
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: executable)
                 process.arguments = arguments
+                process.qualityOfService = .utility   // background work: never competes with what the user is doing
                 if let environment { process.environment = environment }
                 let pipe = Pipe()
                 process.standardOutput = pipe
@@ -70,11 +71,12 @@ enum Docker {
         await run(["compose", "--project-directory", folder, "-f", folder + "/compose.yaml"] + args)
     }
 
-    /// true = running, false = exists but stopped, nil = no such container.
-    static func containerRunning(_ name: String) async -> Bool? {
-        let out = await run(["inspect", "-f", "{{.State.Running}}", name])
+    /// Names of the running containers, or nil if Docker's engine isn't reachable.
+    /// One `docker` process answers both questions (cheaper than `info` + `inspect` + `inspect`).
+    static func runningContainers() async -> Set<String>? {
+        let out = await run(["ps", "--format", "{{.Names}}"])
         guard out.status == 0 else { return nil }
-        return out.text.trimmingCharacters(in: .whitespacesAndNewlines) == "true"
+        return Set(out.text.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) })
     }
 
     static func launchDesktop() {
@@ -113,7 +115,7 @@ enum Stack {
 
 // MARK: - Admin API (the rtmp-admin container)
 
-struct ServerStatus: Decodable {
+struct ServerStatus: Decodable, Equatable {
     let online: Bool
     let uptime: Double?
     let bwIn: Double?

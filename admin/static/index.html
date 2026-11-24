@@ -339,9 +339,16 @@ $("#kickall").addEventListener("click", async () => {
   try { const r = await api("/api/kick-all", {}); toast(`Kicked ${r.kicked.length}`); refresh(); } catch (err) { toast(err.message); }
 });
 
-refresh();
-setInterval(pollStatus, 2000);
-setInterval(pollData, 4000);
+// Poll only while the tab is visible, so a forgotten background tab costs nothing.
+let timers = [];
+function startPolling() {
+  if (timers.length) return;
+  refresh();
+  timers = [setInterval(pollStatus, 2000), setInterval(pollData, 4000)];
+}
+function stopPolling() { timers.forEach(clearInterval); timers = []; }
+document.addEventListener("visibilitychange", () => document.hidden ? stopPolling() : startPolling());
+if (document.hidden) refresh(); else startPolling();
 </script>
 </body>
 </html>

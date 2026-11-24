@@ -54,7 +54,9 @@ struct PanelView: View {
             FooterBar()
         }
         .frame(width: 390)
-        .onAppear { Task { await monitor.refresh(); await monitor.refreshData() } }
+        .environment(\.panelVisible, monitor.panelOpen)
+        .onAppear { monitor.panelOpened() }
+        .onDisappear { monitor.panelClosed() }
     }
 }
 

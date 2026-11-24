@@ -13,7 +13,7 @@ struct NginxAdminApp: App {
                 .environmentObject(model.prefs)
                 .environmentObject(model.monitor)
         } label: {
-            MenuBarLabel(monitor: model.monitor, prefs: model.prefs)
+            MenuBarLabel(state: model.monitor.menuBar, prefs: model.prefs)
         }
         .menuBarExtraStyle(.window)
     }
@@ -45,20 +45,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 }
 
+/// The menu bar icon's content. It only publishes when the icon or text actually changes,
+/// so the menu bar isn't redrawn on every status check.
+@MainActor
+final class MenuBarState: ObservableObject {
+    @Published private(set) var icon = MenuBarLabel.icon(for: .checking)
+    @Published private(set) var text: String? = "…"
+    private var iconPhase = ServerPhase.checking.title
+
+    func update(phase: ServerPhase, text: String?) {
+        if phase.title != iconPhase {
+            iconPhase = phase.title
+            icon = MenuBarLabel.icon(for: phase)
+        }
+        if text != self.text { self.text = text }
+    }
+}
+
 /// Menu bar icon: colour shows the state at a glance.
 struct MenuBarLabel: View {
-    @ObservedObject var monitor: ServerMonitor
+    @ObservedObject var state: MenuBarState
     @ObservedObject var prefs: AppPreferences
 
     var body: some View {
-        let image = Self.icon(for: monitor.phase)
-        if prefs.showTextInMenuBar, let text = monitor.menuBarText {
+        if prefs.showTextInMenuBar, let text = state.text {
             HStack(spacing: 4) {
-                Image(nsImage: image)
+                Image(nsImage: state.icon)
                 Text(text)
             }
         } else {
-            Image(nsImage: image)
+            Image(nsImage: state.icon)
         }
     }
 

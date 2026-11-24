@@ -1,6 +1,43 @@
 import AppKit
 import SwiftUI
 
+// MARK: - Gentle animation
+
+private struct PanelVisibleKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// Whether the menu bar panel is on screen. Animations stop when it isn't.
+    var panelVisible: Bool {
+        get { self[PanelVisibleKey.self] }
+        set { self[PanelVisibleKey.self] = newValue }
+    }
+}
+
+/// Animation clock for the pulsing indicators: at most 30 frames a second (not the display's
+/// 60–120), and stopped entirely when the panel is hidden, Reduce Motion is on, or the Mac is
+/// in Low Power Mode.
+struct GentleTimeline<Content: View>: View {
+    @Environment(\.panelVisible) private var panelVisible
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Seconds per cycle.
+    let period: Double
+    /// Gets the cycle position (0–1), or nil when paused so the view can show a still frame.
+    @ViewBuilder let content: (Double?) -> Content
+
+    var body: some View {
+        let paused = !panelVisible || reduceMotion || ProcessInfo.processInfo.isLowPowerModeEnabled
+        if paused {
+            content(nil)
+        } else {
+            TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
+                content(context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period)
+            }
+        }
+    }
+}
+
 /// Large status light shown at the top of the panel.
 struct StatusLight: View {
     let phase: ServerPhase
@@ -9,8 +46,9 @@ struct StatusLight: View {
         ZStack {
             Circle().fill(phase.color.opacity(0.14))
             if phase == .live {
-                TimelineView(.animation) { context in
-                    let t = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.8) / 1.8
+                GentleTimeline(period: 1.8) { progress in
+                    // Still frame: a soft ring halfway out.
+                    let t = progress ?? 0.5
                     Circle()
                         .stroke(phase.color.opacity(0.6 * (1 - t)), lineWidth: 2)
                         .scaleEffect(0.45 + 0.55 * t)
@@ -127,9 +165,9 @@ struct Pill: View {
     var body: some View {
         HStack(spacing: 5) {
             if pulsing {
-                TimelineView(.animation) { context in
-                    let t = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.6) / 1.6
-                    Circle().fill(color).frame(width: 7, height: 7).opacity(0.35 + 0.65 * abs(cos(t * .pi)))
+                GentleTimeline(period: 1.6) { progress in
+                    let opacity = progress.map { 0.35 + 0.65 * abs(cos($0 * .pi)) } ?? 1
+                    Circle().fill(color).frame(width: 7, height: 7).opacity(opacity)
                 }
                 .frame(width: 7, height: 7)
             } else {

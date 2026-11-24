@@ -137,8 +137,12 @@ enum StreamHealth {
 /// Watches the RTMP server, starts/stops it through Docker, and manages stream keys.
 @MainActor
 final class ServerMonitor: ObservableObject {
-    @Published private(set) var phase: ServerPhase = .checking
-    @Published private(set) var status: ServerStatus?
+    @Published private(set) var phase: ServerPhase = .checking { didSet { syncMenuBar() } }
+    @Published private(set) var status: ServerStatus? { didSet { syncMenuBar() } }
+    /// True while the menu bar panel is showing. Drives the polling rate and animations.
+    @Published private(set) var panelOpen = false
+    /// What the menu bar icon shows. Kept separate so the icon only redraws when it changes.
+    let menuBar = MenuBarState()
     @Published private(set) var keys: [StreamKey] = []
     @Published private(set) var events: [ServerEvent] = []
     @Published private(set) var serverURL: String = ""
@@ -149,7 +153,8 @@ final class ServerMonitor: ObservableObject {
     static let historyLength = 90
     let prefs: AppPreferences
 
-    private var timer: Timer?
+    private var loop: Task<Void, Never>?
+    private var nap: Task<Void, Error>?
     private var refreshing = false
     private var operationInProgress = false
     private var tick = 0
@@ -217,13 +222,42 @@ final class ServerMonitor: ObservableObject {
 
     func begin() {
         Notifier.requestPermission()
-        Task {
-            await refresh()
-            if prefs.startServerOnLaunch, phase == .stopped || phase == .dockerOff { await start() }
+        loop = Task { [weak self] in
+            guard let self else { return }
+            await self.refresh()
+            if self.prefs.startServerOnLaunch, self.phase == .stopped || self.phase == .dockerOff { await self.start() }
+            while !Task.isCancelled {
+                let interval = self.pollInterval
+                // Tolerance lets macOS batch this wakeup with others (saves energy).
+                let nap = Task { try await Task.sleep(for: interval, tolerance: interval / 5) }
+                self.nap = nap
+                _ = try? await nap.value
+                await self.refresh()
+            }
         }
-        timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            Task { @MainActor in await self?.refresh() }
+    }
+
+    /// How long to wait before the next check. Quick only when someone is looking or something is happening.
+    /// While live it stays at 2 s, because stream health and the bitrate graph use 2-second samples.
+    private var pollInterval: Duration {
+        if panelOpen { return .seconds(2) }
+        switch phase {
+        case .live, .checking, .starting, .stopping: return .seconds(2)
+        case .ready, .unresponsive: return .seconds(5)
+        case .stopped, .dockerOff, .noDocker, .failed: return .seconds(15)
         }
+    }
+
+    func panelOpened() {
+        panelOpen = true
+        nap?.cancel()   // check right away instead of waiting out a long idle interval
+        Task { await refreshData() }
+    }
+
+    func panelClosed() { panelOpen = false }
+
+    private func syncMenuBar() {
+        menuBar.update(phase: phase, text: menuBarText)
     }
 
     func refresh() async {
@@ -236,12 +270,12 @@ final class ServerMonitor: ObservableObject {
             guard !operationInProgress else { return }
             apiFailures = 0
             if s.online {
-                status = s
+                if status != s { status = s }
                 recordHistory(s)
                 transition(to: (s.streams ?? []).contains(where: \.live) ? .live : .ready)
                 checkStreamChanges()
             } else {
-                status = nil
+                if status != nil { status = nil }
                 transition(to: .unresponsive)
             }
             // Keys/events/settings change less often.
@@ -254,20 +288,21 @@ final class ServerMonitor: ObservableObject {
         let next: ServerPhase
         if Docker.path == nil {
             next = .noDocker
-        } else if !(await Docker.daemonRunning()) {
-            next = .dockerOff
-        } else {
-            let rtmp = await Docker.containerRunning("rtmp")
-            let admin = await Docker.containerRunning("rtmp-admin")
-            if rtmp == true || admin == true {
+        } else if let running = await Docker.runningContainers() {
+            if running.contains("rtmp") || running.contains("rtmp-admin") {
                 // Allow a couple of misses (e.g. the admin service restarting itself).
                 next = apiFailures >= 3 ? .unresponsive : (phase.isUp ? phase : .checking)
             } else {
                 next = .stopped
             }
+        } else {
+            next = .dockerOff
         }
         guard !operationInProgress else { return }
-        if !next.isUp { status = nil; history = [:] }
+        if !next.isUp {
+            if status != nil { status = nil }
+            if !history.isEmpty { history = [:] }
+        }
         if case .failed = phase, next == .stopped || next == .dockerOff { return }
         transition(to: next)
     }
@@ -277,15 +312,17 @@ final class ServerMonitor: ObservableObject {
         async let e = try? API.events()
         async let s = try? API.settings()
         let (keys, events, settings) = await (k, e, s)
-        if let keys { self.keys = keys }
+        // Only publish real changes, so nothing redraws for nothing.
+        if let keys, keys != self.keys { self.keys = keys }
         if let events {
             notifyNewEvents(events)
-            self.events = events
+            if events != self.events { self.events = events }
         }
-        if let url = settings?.serverUrl { serverURL = url }
+        if let url = settings?.serverUrl, url != serverURL { serverURL = url }
     }
 
     private func recordHistory(_ s: ServerStatus) {
+        if history.isEmpty, !(s.streams ?? []).contains(where: \.live) { return }
         var next: [String: [Double]] = [:]
         for stream in s.streams ?? [] where stream.live {
             var h = history[stream.name] ?? []

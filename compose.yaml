@@ -10,6 +10,7 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./stat.xsl:/etc/nginx/stat/stat.xsl:ro
+    mem_limit: 256m                  # nginx relaying a few streams uses ~10–30 MB
     logging: &logging
       driver: json-file
       options:
@@ -26,4 +27,6 @@ services:
       - ./admin:/app:ro
       - ./data:/data                 # keys.json, settings.json, events.jsonl
     command: ["python", "-u", "/app/app.py"]
+    mem_limit: 96m                   # the admin service needs ~20 MB
+    cpus: 0.5                        # never lets it take more than half a core
     logging: *logging
