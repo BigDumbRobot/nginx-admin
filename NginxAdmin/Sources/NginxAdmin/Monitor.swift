@@ -350,7 +350,7 @@ final class ServerMonitor: ObservableObject {
             if let last = notifiedRejected[event.key], Date().timeIntervalSince(last) < 600 { continue }
             notifiedRejected[event.key] = Date()
             Notifier.post("Unknown stream key rejected",
-                          "Someone tried to stream with “\(event.key)”. If it's a performer, add the key in RTMP Control.")
+                          "Someone tried to stream with “\(event.key)”. If it's a performer, add the key in Nginx Admin.")
         }
     }
 

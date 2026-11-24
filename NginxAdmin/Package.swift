@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "RTMPControl",
+    name: "NginxAdmin",
     platforms: [.macOS("14.2")],
     targets: [
         .executableTarget(
-            name: "RTMPControl",
-            path: "Sources/RTMPControl"
+            name: "NginxAdmin",
+            path: "Sources/NginxAdmin"
         )
     ]
 )

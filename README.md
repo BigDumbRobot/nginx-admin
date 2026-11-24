@@ -1,9 +1,9 @@
-# RTMP Control
+# Nginx Admin
 
 Bring remote performers' video streams into OBS, from the Mac menu bar. No Terminal, no config files.
 
 Each performer streams (from OBS, a Blackmagic ATEM, vMix, etc.) to your Mac with their own
-stream key. RTMP Control runs the receiving server in Docker, shows who's live and how healthy
+stream key. Nginx Admin runs the receiving server in Docker, shows who's live and how healthy
 their connection is, and lets you add, disable and kick performers with a click. In OBS, each
 performer is a Media Source, so switching between them is just a scene change.
 
@@ -27,12 +27,12 @@ Requires macOS 14.2 or later on Apple silicon, and [Docker Desktop](https://www.
    **Start Docker Desktop when you sign in**.
 2. Build and install the app (needs Xcode command line tools: `xcode-select --install`):
    ```sh
-   git clone https://github.com/BigDumbRobot/rtmp-control.git ~/rtmp-server
-   ~/rtmp-server/RTMPControl/build.sh --install
+   git clone https://github.com/BigDumbRobot/nginx-admin.git ~/rtmp-server
+   ~/rtmp-server/NginxAdmin/build.sh --install
    ```
 3. Look for the video-camera icon in the menu bar and press **Start Server**.
 4. In **Settings**, enter the address performers stream to (e.g. `rtmp://your.address:1935/live`)
-   and turn on **Open RTMP Control at login**.
+   and turn on **Open Nginx Admin at login**.
 
 > Can't see the icon? A full menu bar hides icons behind the camera notch. Hold **⌘** and drag
 > other icons out of the menu bar to make room.
@@ -80,7 +80,7 @@ The dashboard (8090) and stat page (8080) only listen on this Mac and are never 
 performers ──RTMP :1935──▶ rtmp (nginx-rtmp, 1 worker) ──▶ OBS Media Sources
                                 │  on_publish: is this key allowed?
                                 ▼
-                           rtmp-admin (Python, stdlib only) ◀── RTMP Control.app
+                           rtmp-admin (Python, stdlib only) ◀── Nginx Admin.app
                            keys, activity log, dashboard :8090
 ```
 
@@ -91,7 +91,7 @@ performers ──RTMP :1935──▶ rtmp (nginx-rtmp, 1 worker) ──▶ OBS M
 | `admin/app.py` | Key store, publish authorization, activity log, JSON API, dashboard |
 | `admin/static/index.html` | Browser dashboard |
 | `stat.xsl` | Styles nginx's raw stat page at `http://localhost:8080` |
-| `RTMPControl/` | The SwiftUI menu bar app (`build.sh` builds it and bundles the files above) |
+| `NginxAdmin/` | The SwiftUI menu bar app (`build.sh` builds it and bundles the files above) |
 | `data/` | Created at runtime: `keys.json`, `settings.json`, `events.jsonl`. Not in git |
 
 Notes:

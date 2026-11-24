@@ -78,7 +78,7 @@ struct FooterBar: View {
             Spacer()
 
             Button { NSApp.terminate(nil) } label: { Label("Quit", systemImage: "power") }
-                .help("Quit RTMP Control (the server keeps running)")
+                .help("Quit Nginx Admin (the server keeps running)")
         }
         .buttonStyle(.borderless)
         .font(.callout)
@@ -582,7 +582,7 @@ struct SettingsTab: View {
 
             Section {
                 Toggle("Start server when this app opens", isOn: $prefs.startServerOnLaunch)
-                Toggle("Open RTMP Control at login", isOn: Binding(get: { prefs.launchAtLogin },
+                Toggle("Open Nginx Admin at login", isOn: Binding(get: { prefs.launchAtLogin },
                                                                     set: { prefs.launchAtLogin = $0 }))
                 if let e = prefs.loginItemError { Text(e).font(.caption).foregroundStyle(.red) }
                 LabeledContent("Server folder") {

@@ -96,7 +96,7 @@ enum Stack {
     static func installIfNeeded(at folder: String) throws {
         guard !isInstalled(at: folder) else { return }
         guard let bundled, FileManager.default.fileExists(atPath: bundled.path) else {
-            throw NSError(domain: "RTMPControl", code: 1,
+            throw NSError(domain: "NginxAdmin", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "No server files found at \(folder)."])
         }
         let fm = FileManager.default

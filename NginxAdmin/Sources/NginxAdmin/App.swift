@@ -3,7 +3,7 @@ import SwiftUI
 import UserNotifications
 
 @main
-struct RTMPControlApp: App {
+struct NginxAdminApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = AppModel()
 

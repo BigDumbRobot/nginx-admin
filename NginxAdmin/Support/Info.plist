@@ -5,13 +5,13 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleExecutable</key>
-    <string>RTMPControl</string>
+    <string>NginxAdmin</string>
     <key>CFBundleIdentifier</key>
-    <string>io.github.bigdumbrobot.RTMPControl</string>
+    <string>io.github.bigdumbrobot.NginxAdmin</string>
     <key>CFBundleName</key>
-    <string>RTMP Control</string>
+    <string>Nginx Admin</string>
     <key>CFBundleDisplayName</key>
-    <string>RTMP Control</string>
+    <string>Nginx Admin</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
