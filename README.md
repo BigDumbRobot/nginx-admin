@@ -44,13 +44,36 @@ get the `.dmg` file under *Assets*.
 > Can't see the icon? A full menu bar hides icons behind the camera notch. Hold **⌘** and drag
 > other icons out of the menu bar to make room.
 
-The server files live in `~/rtmp-server` (changeable in Settings), and the app sets that folder up
-for you. Your stream keys and settings are kept in its `data` folder.
+The app sets up its server files in `~/Library/Application Support/Nginx Admin` (changeable in
+Settings; **Folder** at the bottom of the panel shows it in Finder). Your stream keys and settings
+are kept in its `data` folder. Nothing runs or opens a port until you press **Start Server**. To
+have the server start whenever the app opens, turn that on in Settings.
 
 **Updating**: download the new `.dmg`, quit Nginx Admin, and drag the new version into
 Applications. Your keys and settings are kept. The new server files are applied the next time you
 press Start or Fresh Restart. A server file you edited by hand is saved next to the new one as
 `<name>.backup-<version>`.
+
+## Uninstall
+
+Open the panel → **Settings** → **Uninstall…**. It removes the server (its containers, network
+and the ~1.3 GB Docker downloaded for it), the server folder, the login item and the app's
+settings, then moves the app to the Trash. Tick **Keep stream keys** if you might reinstall.
+Docker Desktop itself stays installed.
+
+**Don't just drag the app to the Trash.** The server keeps running inside Docker without it, with
+port 1935 still open. If you already did, paste this into Terminal to remove what's left:
+
+```sh
+docker rm -f rtmp rtmp-admin
+docker network rm nginxadmin_default rtmp-server_default 2>/dev/null
+docker rmi tiangolo/nginx-rtmp:latest python:3.12-alpine
+rm -rf ~/Library/"Application Support/Nginx Admin"
+defaults delete io.github.bigdumbrobot.NginxAdmin 2>/dev/null
+```
+
+If you had turned on *Open Nginx Admin at login*, also remove it under **System Settings →
+General → Login Items**.
 
 ### Building it yourself
 

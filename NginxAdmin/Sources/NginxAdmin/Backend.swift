@@ -136,6 +136,39 @@ enum Stack {
         try fm.createDirectory(atPath: folder + "/data", withIntermediateDirectories: true)
         try appVersion.write(toFile: stamp, atomically: true, encoding: .utf8)
     }
+
+    /// Where the server files go on a new install: out of sight in Application Support.
+    /// An existing ~/rtmp-server (from an earlier version) keeps being used.
+    static var defaultFolder: String {
+        let fm = FileManager.default
+        let legacy = fm.homeDirectoryForCurrentUser.appendingPathComponent("rtmp-server").path
+        if isInstalled(at: legacy) { return legacy }
+        let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
+        return support.appendingPathComponent("Nginx Admin").path
+    }
+
+    /// A git checkout of the project (a developer's copy): uninstalling never deletes its files.
+    static func isGitCheckout(_ folder: String) -> Bool {
+        FileManager.default.fileExists(atPath: folder + "/.git")
+    }
+
+    /// Deletes what the app put in the server folder, then the folder itself if nothing else is in it.
+    /// Files the app didn't create are left alone.
+    static func remove(at folder: String, keepData: Bool) throws {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: folder), !isGitCheckout(folder) else { return }
+        var ours: Set<String> = ["compose.yaml", "nginx.conf", "stat.xsl", "admin", versionFile, ".DS_Store"]
+        if let bundled, let items = try? fm.contentsOfDirectory(atPath: bundled.path) { ours.formUnion(items) }
+        if !keepData { ours.insert("data") }
+        for item in try fm.contentsOfDirectory(atPath: folder)
+        where ours.contains(item) || item.contains(".backup-") {
+            try fm.removeItem(atPath: folder + "/" + item)
+        }
+        if (try fm.contentsOfDirectory(atPath: folder)).isEmpty {
+            try fm.removeItem(atPath: folder)
+        }
+    }
 }
 
 // MARK: - Admin API (the rtmp-admin container)

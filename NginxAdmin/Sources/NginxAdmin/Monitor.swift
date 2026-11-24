@@ -17,9 +17,9 @@ final class AppPreferences: ObservableObject {
     @Published private(set) var loginItemError: String?
 
     init() {
-        stackPath = defaults.string(forKey: "stackPath")
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("rtmp-server").path
-        startServerOnLaunch = defaults.object(forKey: "startServerOnLaunch") as? Bool ?? true
+        stackPath = defaults.string(forKey: "stackPath") ?? Stack.defaultFolder
+        // Off until the user turns it on: opening the app never starts Docker or opens a port by itself.
+        startServerOnLaunch = defaults.object(forKey: "startServerOnLaunch") as? Bool ?? false
         notifyPerformers = defaults.object(forKey: "notifyPerformers") as? Bool ?? true
         notifyProblems = defaults.object(forKey: "notifyProblems") as? Bool ?? true
         showTextInMenuBar = defaults.object(forKey: "showTextInMenuBar") as? Bool ?? true
@@ -56,6 +56,14 @@ enum Notifier {
         UNUserNotificationCenter.current().add(
             UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
     }
+
+    /// Clears the app's notifications from Notification Center.
+    static func removeAll() {
+        guard available else { return }
+        let center = UNUserNotificationCenter.current()
+        center.removeAllDeliveredNotifications()
+        center.removeAllPendingNotificationRequests()
+    }
 }
 
 // MARK: - Phase
@@ -73,11 +81,12 @@ enum ServerPhase: Equatable {
     case live
     case unresponsive
     case failed(String)
+    case uninstalling(String)
 
     var isUp: Bool { self == .ready || self == .live || self == .unresponsive }
     var isBusy: Bool {
         switch self {
-        case .starting, .stopping, .checking: return true
+        case .starting, .stopping, .checking, .uninstalling: return true
         default: return false
         }
     }
@@ -94,6 +103,7 @@ enum ServerPhase: Equatable {
         case .live: return "Live"
         case .unresponsive: return "Not Responding"
         case .failed: return "Couldn't Start"
+        case .uninstalling: return "Uninstalling…"
         }
     }
 
@@ -103,7 +113,7 @@ enum ServerPhase: Equatable {
         case .ready: return .systemOrange
         case .unresponsive, .failed, .noDocker: return .systemRed
         case .starting, .stopping, .checking: return .systemBlue
-        case .stopped, .dockerOff: return .systemGray
+        case .stopped, .dockerOff, .uninstalling: return .systemGray
         }
     }
 
@@ -189,6 +199,7 @@ final class ServerMonitor: ObservableObject {
             return names.count <= 2 ? names.joined(separator: " & ") + " streaming" : "\(names.count) performers streaming"
         case .unresponsive: return "The server is running but not answering"
         case .failed(let message): return message
+        case .uninstalling(let step): return step
         }
     }
 
@@ -198,7 +209,7 @@ final class ServerMonitor: ObservableObject {
         case .ready: return "READY"
         case .unresponsive, .failed, .noDocker: return "ERROR"
         case .stopped, .dockerOff: return "OFF"
-        case .starting, .stopping, .checking: return "…"
+        case .starting, .stopping, .checking, .uninstalling: return "…"
         }
     }
 
@@ -221,7 +232,6 @@ final class ServerMonitor: ObservableObject {
     // MARK: Loop
 
     func begin() {
-        Notifier.requestPermission()
         loop = Task { [weak self] in
             guard let self else { return }
             await self.refresh()
@@ -244,7 +254,7 @@ final class ServerMonitor: ObservableObject {
         switch phase {
         case .live, .checking, .starting, .stopping: return .seconds(2)
         case .ready, .unresponsive: return .seconds(5)
-        case .stopped, .dockerOff, .noDocker, .failed: return .seconds(15)
+        case .stopped, .dockerOff, .noDocker, .failed, .uninstalling: return .seconds(15)
         }
     }
 
@@ -399,6 +409,8 @@ final class ServerMonitor: ObservableObject {
         defer { operationInProgress = false }
         lastError = nil
         phase = .starting("Preparing")
+        // Ask about notifications when the user first starts the server, not the moment the app opens.
+        if prefs.notifyPerformers || prefs.notifyProblems { Notifier.requestPermission() }
 
         guard Docker.path != nil else { phase = .noDocker; return }
         do {
@@ -485,6 +497,82 @@ final class ServerMonitor: ObservableObject {
             }
         }
         phase = .failed("The server started but isn't answering. Try Restart.")
+    }
+
+    // MARK: Uninstall
+
+    /// The Docker images the server runs on (see compose.yaml).
+    static let serverImages = ["tiangolo/nginx-rtmp:latest", "python:3.12-alpine"]
+
+    /// Removes everything the app added to this Mac: the server's containers, network and images,
+    /// the server folder (optionally keeping stream keys), the login item, notifications and
+    /// settings. Then moves the app to the Trash and quits. Stops at the first step that fails,
+    /// so it can be tried again.
+    func uninstall(keepKeys: Bool) async {
+        guard !operationInProgress else { return }
+        operationInProgress = true
+        lastError = nil
+        let folder = prefs.stackPath
+        func fail(_ message: String) {
+            phase = .failed(message)
+            operationInProgress = false
+        }
+
+        // 1. The server. Docker must be running to remove it; otherwise the containers would come
+        //    back the next time Docker starts.
+        if Docker.path != nil {
+            if !(await Docker.daemonRunning()) {
+                phase = .uninstalling("Opening Docker Desktop to remove the server")
+                Docker.launchDesktop()
+                var up = false
+                for _ in 0..<90 {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    if await Docker.daemonRunning() { up = true; break }
+                }
+                guard up else {
+                    return fail("Docker Desktop didn't start, so the server couldn't be removed. Open Docker Desktop, then try Uninstall again.")
+                }
+            }
+            phase = .uninstalling("Removing the server and its downloads")
+            if Stack.isInstalled(at: folder) {
+                // Not --rmi: that also prunes dangling images, which may belong to other projects.
+                _ = await Docker.compose(folder, ["down", "--volumes", "--remove-orphans"])
+            }
+            // Anything compose didn't cover (e.g. the folder was moved by hand).
+            _ = await Docker.run(["rm", "-f", "rtmp", "rtmp-admin"])
+            _ = await Docker.run(["rmi"] + Self.serverImages)   // skipped by Docker if another container uses one
+            if let running = await Docker.runningContainers(),
+               running.contains("rtmp") || running.contains("rtmp-admin") {
+                return fail("Docker wouldn't remove the server containers. Quit and reopen Docker Desktop, then try again.")
+            }
+        }
+
+        // 2. Server files.
+        phase = .uninstalling("Removing server files")
+        do {
+            try Stack.remove(at: folder, keepData: keepKeys)
+        } catch {
+            return fail("Couldn't remove \(folder): \(error.localizedDescription)")
+        }
+
+        // 3. Login item, notifications, settings.
+        if SMAppService.mainApp.status != .notRegistered { try? await SMAppService.mainApp.unregister() }
+        Notifier.removeAll()
+        if let id = Bundle.main.bundleIdentifier { UserDefaults.standard.removePersistentDomain(forName: id) }
+
+        // 4. Say goodbye, move the app to the Trash, quit.
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Nginx Admin has been uninstalled"
+        alert.informativeText = keepKeys && FileManager.default.fileExists(atPath: folder + "/data")
+            ? "Your stream keys were kept in \(folder)/data. Install Nginx Admin again to use them, or delete that folder."
+            : "The server, its downloads and all of the app's files have been removed."
+        alert.runModal()
+        let app = Bundle.main.bundleURL
+        if app.pathExtension == "app" {
+            _ = try? await NSWorkspace.shared.recycle([app])
+        }
+        NSApp.terminate(nil)
     }
 
     private static func explain(_ out: Shell.Output) -> String {

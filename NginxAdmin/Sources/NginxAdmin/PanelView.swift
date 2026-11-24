@@ -562,6 +562,17 @@ struct SettingsTab: View {
     @EnvironmentObject private var prefs: AppPreferences
     @State private var url = ""
     @State private var saved = false
+    @State private var confirmUninstall = false
+    @State private var keepKeys = false
+
+    private var uninstallSummary: String {
+        var steps = "This disconnects anyone streaming, then removes the server and the software Docker downloaded for it (about 1.3 GB), "
+        steps += Stack.isGitCheckout(prefs.stackPath)
+            ? "leaves your project folder as it is (it's a git checkout), "
+            : "deletes the server folder, "
+        steps += "removes the login item and the app's settings, and moves Nginx Admin to the Trash. Docker Desktop itself stays installed."
+        return steps
+    }
 
     var body: some View {
         Form {
@@ -614,6 +625,35 @@ struct SettingsTab: View {
             Section("Menu bar") {
                 Toggle("Show status text next to the icon", isOn: $prefs.showTextInMenuBar)
             }
+
+            Section {
+                if confirmUninstall {
+                    Text(uninstallSummary)
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Toggle("Keep stream keys for a future reinstall", isOn: $keepKeys)
+                    HStack {
+                        Spacer()
+                        Button("Cancel") { confirmUninstall = false }
+                        Button("Uninstall", role: .destructive) {
+                            Task { await monitor.uninstall(keepKeys: keepKeys) }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.red)
+                    }
+                } else {
+                    HStack {
+                        Text("Remove Nginx Admin, its server and everything it added to this Mac.")
+                            .font(.callout).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        Button("Uninstall…") { confirmUninstall = true }
+                    }
+                }
+            } header: {
+                Text("Uninstall")
+            }
+            .disabled(monitor.phase.isBusy)
         }
         .formStyle(.grouped)
         .onAppear { url = monitor.serverURLIsPlaceholder ? "" : monitor.serverURL }
