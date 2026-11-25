@@ -558,7 +558,13 @@ final class ServerMonitor: ObservableObject {
         // 3. Login item, notifications, settings.
         if SMAppService.mainApp.status != .notRegistered { try? await SMAppService.mainApp.unregister() }
         Notifier.removeAll()
-        if let id = Bundle.main.bundleIdentifier { UserDefaults.standard.removePersistentDomain(forName: id) }
+        if let id = Bundle.main.bundleIdentifier {
+            // removePersistentDomain leaves the .plist on disk with the old values: delete it after.
+            UserDefaults.standard.removePersistentDomain(forName: id)
+            UserDefaults.standard.synchronize()
+            try? FileManager.default.removeItem(at: FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Preferences/\(id).plist"))
+        }
 
         // 4. Say goodbye, move the app to the Trash, quit.
         NSApp.activate(ignoringOtherApps: true)

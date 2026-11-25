@@ -70,6 +70,7 @@ docker network rm nginxadmin_default rtmp-server_default 2>/dev/null
 docker rmi tiangolo/nginx-rtmp:latest python:3.12-alpine
 rm -rf ~/Library/"Application Support/Nginx Admin"
 defaults delete io.github.bigdumbrobot.NginxAdmin 2>/dev/null
+rm -f ~/Library/Preferences/io.github.bigdumbrobot.NginxAdmin.plist
 ```
 
 If you had turned on *Open Nginx Admin at login*, also remove it under **System Settings →
